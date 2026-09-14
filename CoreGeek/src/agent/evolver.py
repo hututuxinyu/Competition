@@ -86,6 +86,9 @@ def plan_pioneer_action(
             task.phase = TASK_TIMEOUT
             mem.active_task = None
             return None  # 让 brain 走 _pioneer_to_tower 回武器防御
+        # 已提交过答案 → 不重复提交(等任务结束/超时)，避免卡死循环
+        if task.last_answer:
+            return None
         # B2: 任务期不移动，只提交答案
         answer = _derive_answer(turn, mem, task)
         if answer:
@@ -205,10 +208,10 @@ def _derive_answer(turn: Turn, mem: Memory, task: "TaskState") -> str:
     """从累积观察推导答案：优先 LLM；工程类从 check 提取 TOKEN。"""
     if task.llm_observations:
         return task.llm_observations[-1].strip()
-    # 工程类：从 check 输出提取 TOKEN
+    # 工程类：从 check 输出提取 TOKEN（仅字母数字，避免反引号等占位符）
     if task.task_kind == "engineering":
         for obs in reversed(task.observations):
-            m = re.search(r"TOKEN:\s*(\S+)", obs)
+            m = re.search(r"TOKEN:\s*([A-Za-z0-9]+)", obs)
             if m:
                 return json.dumps({"token": m.group(1)})
     # 兜底：LLM 配额耗尽时用最后沙盒输出

@@ -106,7 +106,7 @@ def plan_collect(
             priority = 1000 if unavail_tomorrow else turn.vendor_price(ore)
             candidates.append((priority, ore, pos))
     candidates.sort(
-        key=lambda x: (-x[0], distance(worker.pos, x[2]), x[2].x, x[2].y)
+        key=lambda x: (distance(worker.pos, x[2]), -x[0], x[2].x, x[2].y)
     )
     for _, ore, pos in candidates:
         step = _move_toward(turn, worker, pos, claimed)

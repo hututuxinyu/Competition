@@ -98,7 +98,8 @@ def _day_worker_action(
     walls_missing: list[Pos],
     claimed: set[Pos],
 ) -> dict[str, Any] | None:
-    """单工人白天动作优先级：升级 > 卖矿 > 买券 > 建塔 > 建墙 > 移动到经济目标 > 采矿。"""
+    """单工人白天动作优先级：升级 > 卖矿 > 买券 > 建塔 > 移动到经济(卖矿换金币) > 建墙 > 采矿。
+    有矿先去卖换金币升级(比建墙更重要)，避免 stone 全被建墙抢走导致 gold=0 无法升级。"""
     for plan in (economy.plan_upgrade, economy.plan_sell, economy.plan_buy):
         cmd = plan(turn, worker)
         if cmd is not None:
@@ -109,10 +110,10 @@ def _day_worker_action(
     cmd = builder.plan_build_tower(turn, worker, sites, towers_missing, claimed)
     if cmd is not None:
         return cmd
-    cmd = builder.plan_build_wall(turn, worker, walls_missing, claimed)
+    cmd = economy.plan_move_to_economy(turn, worker, claimed)
     if cmd is not None:
         return cmd
-    cmd = economy.plan_move_to_economy(turn, worker, claimed)
+    cmd = builder.plan_build_wall(turn, worker, walls_missing, claimed)
     if cmd is not None:
         return cmd
     return economy.plan_collect(turn, worker, _MEM, claimed)
