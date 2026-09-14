@@ -38,6 +38,11 @@ class TaskState:
     pending_query_type: str = ""  # "llm" / "cmd" / ""
     last_answer: str = ""
     best_pass_rate: float = 0.0
+    # 沙盒探索引擎状态
+    explore_step: int = 0          # 探索进度
+    task_file_path: str = ""       # find 到的任务文件路径
+    work_dir: str = ""             # 任务工作目录
+    task_kind: str = ""            # "api" / "engineering"
 
     def is_active(self) -> bool:
         return self.phase not in (TASK_DONE, TASK_TIMEOUT)
