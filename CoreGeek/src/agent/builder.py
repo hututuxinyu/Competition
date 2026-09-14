@@ -105,9 +105,13 @@ def tower_sites(turn: Turn) -> tuple[Pos, ...]:
     if station is None:
         return ()
     footprint = station_footprint(station.pos)
-    cells = [p for p in _cells_at_distance(station.pos, 1) if turn.land(p)]
-    cells.sort(key=lambda p: (_footprint_distance(p, footprint), p.x, p.y))
-    return tuple(cells[:3])
+    # distance1 优先；若无可建格(基地旁被占满)则扩大到 distance2
+    for radius in (1, 2):
+        cells = [p for p in _cells_at_distance(station.pos, radius) if turn.land(p)]
+        cells.sort(key=lambda p: (_footprint_distance(p, footprint), p.x, p.y))
+        if cells:
+            return tuple(cells[:3])
+    return ()
 
 
 def wall_order(turn: Turn) -> tuple[Pos, ...]:

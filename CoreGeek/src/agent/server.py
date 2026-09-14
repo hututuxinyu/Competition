@@ -19,13 +19,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(raw.decode("utf-8"))
             response = decide(payload)
             body = json.dumps(response.to_dict(), ensure_ascii=False).encode("utf-8")
-            LOGGER.info(
-                "round %s -> %d cmds, prompt=%dB, cmd=%dB",
-                payload.get("roundNo"),
-                len(response.role_command_map),
-                len(response.prompt),
-                len(response.execute_cmd),
-            )
+            _log_round(payload, response)
         except Exception:
             LOGGER.exception("decision failed, returning empty response")
             body = _EMPTY_BODY
@@ -37,6 +31,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:
         return
+
+
+def _log_round(payload: dict[str, Any], response: Response) -> None:
+    """增强日志：回合摘要 + 命令详情 + 0-cmd 标记，便于事后追溯。"""
+    round_no = payload.get("roundNo")
+    team = payload.get("teamOur") or {}
+    roles = team.get("roles") or []
+    station = next((r for r in roles if r.get("roleType") == "station"), {})
+    robots = (payload.get("robot") or {}).get("roles") or []
+    cmd_count = len(response.role_command_map)
+    LOGGER.info(
+        "round %s | gold=%s score=%s base_hp=%s | ours=%d robots=%d | "
+        "cmds=%d prompt=%dB executeCmd=%dB",
+        round_no, team.get("goldNum"), team.get("totalScore"),
+        station.get("health"), len(roles), len(robots),
+        cmd_count, len(response.prompt), len(response.execute_cmd),
+    )
+    if cmd_count == 0:
+        LOGGER.warning("round %s [0-CMD] no command produced (check plan logic)", round_no)
+    for rid, cmd in response.role_command_map.items():
+        LOGGER.info("  R%s: %s", rid, json.dumps(cmd, ensure_ascii=False))
 
 
 def serve(port: int) -> None:

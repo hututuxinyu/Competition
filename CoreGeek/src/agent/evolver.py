@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .grid import next_step
+from .grid import next_step, next_step_to_adjacent
 from .memory import (
     Memory,
     TASK_ACCEPTED,
@@ -170,7 +170,7 @@ def _move_toward(
 ) -> dict[str, Any] | None:
     if distance(role.pos, target) <= 1:
         return None
-    step = next_step(turn, role, target)
+    step = next_step_to_adjacent(turn, role, target, claimed)
     if step is None or step in claimed:
         return None
     claimed.add(step)

@@ -303,6 +303,66 @@ def gen_day_sell_premium():
     print("  day_sell_premium.json: iron 涨价 price=10")
 
 
+# ===== 真实对战基础用例（基于 request.txt 真实地图）=====
+
+def gen_real_day_init():
+    """round1 白天初始, challenger 真实开局: station@10,24, 2worker+pioneer 在基地旁,
+    无塔无墙, gold75. 验证白天产出≥2命令(建塔/采集/移动), 不再0 cmds。"""
+    roles = [
+        role(10013, 10, 24, "station", 1500, level=1),
+        role(10010, 12, 24, "worker", 220, capacity=100),
+        role(10012, 12, 23, "worker", 220, capacity=100),
+        role(10011, 12, 25, "pioneer", 200, capacity=40),
+    ]
+    make("real_day_init", 1, 75, roles)
+
+
+def gen_real_night_wave():
+    """round71 首夜, 3塔已建(基地旁真实塔位9,22/9,23/9,24), 角色在塔旁,
+    机器人来袭(含BOSS). 验证夜间attack操控武器。"""
+    roles = [
+        role(10013, 10, 24, "station", 1500, level=1),
+        role(10020, 9, 22, "gatling", 1000, level=1, attack_power=10, attack_range=3),
+        role(10030, 9, 23, "railgun", 1000, level=1, attack_power=10, attack_range=6),
+        role(10040, 9, 24, "rocket", 1000, level=1, attack_power=20, attack_range=10),
+        role(10010, 8, 22, "worker", 220, capacity=100),
+        role(10012, 8, 23, "worker", 220, capacity=100),
+        role(10011, 8, 24, "pioneer", 200, capacity=40),
+    ]
+    robots = [
+        robot(30001, 11, 22, "smallRobot", 40),
+        robot(30002, 12, 23, "middleRobot", 60),
+        robot(30003, 11, 21, "bossRobot", 800),
+    ]
+    make("real_night_wave", 71, 20, roles, robots)
+
+
+def gen_real_task_accept():
+    """round10 白天, pioneer@13,14邻challengerTaskPoint1@(14,14), playerTasks可接.
+    验证acceptTask(自进化任务入口)。"""
+    roles = [
+        role(10013, 10, 24, "station", 1500, level=1),
+        role(10020, 9, 22, "gatling", 1000, level=1, attack_power=10, attack_range=3),
+        role(10030, 9, 23, "railgun", 1000, level=1, attack_power=10, attack_range=6),
+        role(10040, 9, 24, "rocket", 1000, level=1, attack_power=20, attack_range=10),
+        role(10010, 8, 22, "worker", 220, capacity=100),
+        role(10012, 8, 23, "worker", 220, capacity=100),
+        role(10011, 13, 14, "pioneer", 200, capacity=40),
+    ]
+    make("real_task_accept", 10, 25, roles)
+
+
+def gen_real_folk_legend():
+    """round1 白天, 真实民间传闻(西部有一石门,门需三钥). 验证treasure.dispatch_llm产出prompt。"""
+    roles = [
+        role(10013, 10, 24, "station", 1500, level=1),
+        role(10010, 12, 24, "worker", 220, capacity=100),
+        role(10012, 12, 23, "worker", 220, capacity=100),
+        role(10011, 12, 25, "pioneer", 200, capacity=40),
+    ]
+    make("real_folk_legend", 1, 75, roles)
+
+
 def gen_night_items():
     """round71 首夜, BOSS进range, worker1背包含DizzyWeapon待用, worker2操控railgun。"""
     roles = [
@@ -339,6 +399,11 @@ def main():
     gen_night_railgun()
     gen_night_rocket()
     gen_night_items()
+    # 真实对战基础用例
+    gen_real_day_init()
+    gen_real_night_wave()
+    gen_real_task_accept()
+    gen_real_folk_legend()
     print(f"Done -> {FIXTURE_DIR}")
 
 

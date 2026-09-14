@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .grid import next_step
+from .grid import next_step, next_step_to_adjacent
 from .memory import Memory
 from .protocol import (
     ORE_TYPES,
@@ -80,9 +80,20 @@ def update_forecast(turn: Turn, mem: Memory) -> None:
 def plan_collect(
     turn: Turn, worker: Unit, mem: Memory, claimed: set[Pos]
 ) -> dict[str, Any] | None:
-    """采集倾斜：明天不可采的矿优先囤货，否则按当前价高优先。"""
+    """采集倾斜：优先采身边的矿(distance<=1)；否则明天不可采的矿优先囤货，
+    否则按当前价高优先，选最近矿移动过去。"""
     if worker.backpack_full:
         return None
+    from .protocol import collect_command
+    # 1. 优先采身边的矿（distance<=1），无论价格——避免舍近求远跑空
+    for ore in ORE_TYPES:
+        for pos in turn.mines(ore):
+            if pos in claimed:
+                continue
+            if worker.pos != pos and distance(worker.pos, pos) <= 1:
+                claimed.add(pos)
+                return collect_command(pos)
+    # 2. 否则按 priority（不可采囤货1000 > 矿石单价）+ 距离选远矿移动
     candidates: list[tuple[int, str, Pos]] = []
     for ore in ORE_TYPES:
         for pos in turn.mines(ore):
@@ -92,17 +103,12 @@ def plan_collect(
                 ore in mem.ore_unavailable_days
                 and (mem.day + 1) in mem.ore_unavailable_days[ore]
             )
-            # 囤货优先级 1000(不可采) > 矿石单价
             priority = 1000 if unavail_tomorrow else turn.vendor_price(ore)
             candidates.append((priority, ore, pos))
     candidates.sort(
         key=lambda x: (-x[0], distance(worker.pos, x[2]), x[2].x, x[2].y)
     )
     for _, ore, pos in candidates:
-        if worker.pos != pos and distance(worker.pos, pos) <= 1:
-            from .protocol import collect_command
-            claimed.add(pos)
-            return collect_command(pos)
         step = _move_toward(turn, worker, pos, claimed)
         if step is not None:
             return step
@@ -245,7 +251,7 @@ def _move_toward(
 ) -> dict[str, Any] | None:
     if distance(worker.pos, target) <= 1:
         return None
-    step = next_step(turn, worker, target)
+    step = next_step_to_adjacent(turn, worker, target, claimed)
     if step is None or step in claimed:
         return None
     claimed.add(step)
