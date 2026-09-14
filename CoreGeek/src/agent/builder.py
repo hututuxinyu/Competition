@@ -17,7 +17,7 @@ from .protocol import (
     station_footprint,
 )
 
-TOWER_LOADOUT = ("gatling", "railgun", "rocket")
+TOWER_LOADOUT = ("rocket", "railgun", "rocket")  # 2火箭(全图溅射)+1电磁(穿透)，去加特林(射程3太短)
 STONE_BATCH = 6
 WALL_LAYERS = (2, 3)  # 双层围墙：distance2 主环 + distance3 外环
 

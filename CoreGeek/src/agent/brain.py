@@ -8,9 +8,11 @@ from . import adversary, builder, combat, economy, evolver, treasure
 from .grid import next_step
 from .memory import Memory
 from .protocol import (
+    DAY_ROUNDS,
     PIONEER,
     Pos,
     Response,
+    ROUNDS_PER_DAY,
     Turn,
     Unit,
     distance,
@@ -99,7 +101,17 @@ def _day_worker_action(
     claimed: set[Pos],
 ) -> dict[str, Any] | None:
     """单工人白天动作优先级：升级 > 卖矿 > 买券 > 建塔 > 移动到经济(卖矿换金币) > 建墙 > 采矿。
-    有矿先去卖换金币升级(比建墙更重要)，避免 stone 全被建墙抢走导致 gold=0 无法升级。"""
+    夜晚前5回合强制回武器旁(夜间操控准备)。有矿先去卖换金币升级(比建墙更重要)。"""
+    round_in_day = (turn.round_no - 1) % ROUNDS_PER_DAY
+    # 夜晚前5回合：worker 停止采集/建墙，回最近武器旁(夜间操控)
+    if round_in_day >= DAY_ROUNDS - 5:
+        weapons = turn.weapons()
+        if weapons:
+            nearest = min(weapons, key=lambda w: distance(worker.pos, w.pos))
+            if distance(worker.pos, nearest.pos) > 1:
+                step = _step_toward(turn, worker, nearest.pos, claimed)
+                if step is not None:
+                    return move_command(step)
     for plan in (economy.plan_upgrade, economy.plan_sell, economy.plan_buy):
         cmd = plan(turn, worker)
         if cmd is not None:

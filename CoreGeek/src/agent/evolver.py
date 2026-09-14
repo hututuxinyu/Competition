@@ -255,8 +255,9 @@ def _extract_path(find_output: str) -> str:
 
 
 def _is_engineering_task(content: str) -> bool:
-    """判断是否工程修复类（含 ./check / spec.md / TOKEN / 修复）。"""
-    return any(k in (content or "") for k in ("./check", "spec.md", "TOKEN:", "修复", "check"))
+    """判断是否工程修复类（含 ./check / spec.md / TOKEN / 修复）。
+    注意：不能只用'check'，API文档常含'check'字样会误判。"""
+    return any(k in (content or "") for k in ("./check", "spec.md", "TOKEN:", "修复"))
 
 
 def _build_curl_cmd(docs: str, task: "TaskState") -> str:
@@ -279,7 +280,10 @@ def _build_curl_cmd(docs: str, task: "TaskState") -> str:
     mc = re.search(r"city[=：\s]+([^\s,}]+)", task_content)
     if mc:
         city = mc.group(1)
-    header = f'-H "X-API-Key: {key}"' if key else ""
+    header = ""
+    if key:
+        # 双 header 保险(部分API用 Authorization)
+        header = f'-H "X-API-Key: {key}" -H "Authorization: Bearer {key}"'
     return f'curl -s {header} "{base}{endpoint}?city={city}" 2>/dev/null | head -200'
 
 
