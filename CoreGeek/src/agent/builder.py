@@ -131,8 +131,8 @@ def tower_sites(turn: Turn) -> tuple[Pos, ...]:
 
 
 def wall_order(turn: Turn) -> tuple[Pos, ...]:
-    """U型围墙：北+东+南三面，西侧开放（靠塔覆盖）。
-    对手共性布局：14-17墙 vs 同心圆32-40墙，建墙效率翻倍。"""
+    """U型围墙：远侧(ymin-4) + 东侧(xmax+1) + 站位西侧(ymax, x<xmin)。
+    对手共性布局：14墙，三面包围，西侧开放（靠塔覆盖）。"""
     station = turn.station()
     if station is None:
         return ()
@@ -145,24 +145,19 @@ def wall_order(turn: Turn) -> tuple[Pos, ...]:
     fp_set = set(footprint)
     order: list[Pos] = []
 
-    # 1. 北面横墙：y = ymin - 4，x 从 xmin-2 到 xmax+1
-    north_y = ymin - 4
-    for x in range(xmin - 2, xmax + 2):
-        order.append(Pos(x, north_y))
+    # 1. 远侧横墙：y = ymin - 4，x 从 xmin-3 到 xmax+1
+    far_y = ymin - 4
+    for x in range(xmin - 3, xmax + 2):
+        order.append(Pos(x, far_y))
 
-    # 2. 东面纵墙：x = xmax + 1，y 从 north_y+1 到 ymax+1
+    # 2. 东侧纵墙：x = xmax + 1，y 从 far_y+1 到 ymax
     east_x = xmax + 1
-    for y in range(north_y + 1, ymax + 2):
+    for y in range(far_y + 1, ymax + 1):
         order.append(Pos(east_x, y))
 
-    # 3. 南面横墙：y = ymax + 1，x 从 xmin-2 到 east_x-1
-    south_y = ymax + 1
-    for x in range(xmin - 2, east_x):
-        order.append(Pos(x, south_y))
-
-    # 4. 西侧延伸角（2墙，阻挡绕行）
-    order.append(Pos(xmin - 2, north_y))
-    order.append(Pos(xmin - 2, south_y))
+    # 3. 站位西侧横墙：y = ymax，x 从 xmin-3 到 xmin-1（排除站位）
+    for x in range(xmin - 3, xmin):
+        order.append(Pos(x, ymax))
 
     # 去重 + 过滤障碍/非land，排除基地footprint
     seen: set[Pos] = set()

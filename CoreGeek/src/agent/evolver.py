@@ -132,12 +132,12 @@ def dispatch_tools(turn: Turn, mem: Memory) -> tuple[str, str]:
     # 3. API 类 curl 完成后：用 LLM 从数据+任务要求生成答案
     if task.task_kind == "api" and task.explore_step >= _STEP_ANSWER:
         if mem.pending_llm is None and mem.llm_budget_remaining(in_task=True) > 0:
-            prompt = _gen_answer_prompt(task)
+            prompt = _gen_answer_prompt(turn, task)
             if mem.request_llm(prompt, in_task=True):
                 return prompt, ""
-    # 4. 通用 LLM 兜底（未知任务类型）
+    # 4. LLM 兜底：直接从 phase_task 生成答案（不再问命令，避免命令被当答案提交）
     if mem.pending_llm is None and mem.llm_budget_remaining(in_task=True) > 0:
-        prompt = _gen_explore_prompt(turn, task)
+        prompt = _gen_direct_answer_prompt(turn, task)
         if mem.request_llm(prompt, in_task=True):
             return prompt, ""
     return "", ""
@@ -151,11 +151,14 @@ def _gen_explore_cmd(turn: Turn, task: "TaskState") -> str | None:
     if step == _STEP_FIND:
         task.explore_step = _STEP_CAT_TASK
         fname = _extract_filename(turn.phase_task)
-        return f"find . /home /tmp /data /opt /root -maxdepth 4 -name '{fname}' 2>/dev/null | head -5"
+        return f"find / -maxdepth 5 -name '{fname}' 2>/dev/null | head -5"
 
     if step == _STEP_CAT_TASK:
         path = _extract_path(obs[-1] if obs else "")
         if not path:
+            # find 失败 → 跳过 cat/curl，直接用 LLM 从 phase_task 生成答案
+            task.task_kind = "api"
+            task.explore_step = _STEP_ANSWER
             return None
         task.task_file_path = path
         task.work_dir = path.rsplit("/", 1)[0] if "/" in path else "."
@@ -304,15 +307,28 @@ def _build_fix_cmd(check_out: str, task: "TaskState") -> str | None:
     return None
 
 
-def _gen_answer_prompt(task: "TaskState") -> str:
+def _gen_answer_prompt(turn: Turn, task: "TaskState") -> str:
     """API 类：让 LLM 从 curl 数据 + 任务要求生成答案 JSON。"""
     task_content = task.observations[1] if len(task.observations) >= 2 else ""
+    if not task_content:
+        task_content = turn.phase_task or "（无文件内容）"
     curl_data = task.observations[-1] if task.observations else ""
     return (
         f"任务要求:\n{task_content[:1500]}\n\n"
         f"API 返回数据:\n{curl_data[:1500]}\n\n"
         f"请根据任务要求的提交格式，从数据中提取答案字段。"
         f"只返回 JSON 答案，不要解释。"
+    )
+
+
+def _gen_direct_answer_prompt(turn: Turn, task: "TaskState") -> str:
+    """探索失败时：直接从 phase_task 描述生成答案（不问命令，直接要答案）。"""
+    obs_text = "\n".join(task.observations[-3:]) if task.observations else "无"
+    return (
+        f"任务描述:\n{turn.phase_task}\n\n"
+        f"已有观察:\n{obs_text[:500]}\n\n"
+        f"请根据任务描述直接给出答案。"
+        f"只返回JSON格式的答案，不要解释，不要命令，不要代码。"
     )
 
 
