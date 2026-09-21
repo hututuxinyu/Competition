@@ -1,0 +1,32 @@
+{
+  "base_alive_r130": 1,
+  "base_alive_r260": 1,
+  "base_level_r130": 1,
+  "base_level_r260": 1,
+  "final_base_hp": 1500,
+  "final_base_level": 1,
+  "final_gold": 15,
+  "final_tower_count": 3,
+  "final_wall_count": 5,
+  "gold_r260": 15,
+  "gold_r30": 0,
+  "gold_r70": 35,
+  "rocket_ratio_r10": 1.0,
+  "sell_count_r70": 9,
+  "task_accept_count_r70": 6,
+  "task_submit_count_r70": 0,
+  "timeline": {
+    "first_accept_task_round": 8,
+    "first_sell_round": 45,
+    "first_tower_round": 3,
+    "first_wall_round": 14,
+    "third_tower_round": 7
+  },
+  "tower_count_r10": 3,
+  "tower_count_r30": 3,
+  "tower_lv2_count_r130": 0,
+  "tower_lv2_count_r260": 0,
+  "wall_count_r260": 5,
+  "wall_count_r70": 5,
+  "zero_cmd_rounds_r70": 0
+}

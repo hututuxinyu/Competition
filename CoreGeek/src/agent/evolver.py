@@ -86,16 +86,14 @@ def plan_pioneer_action(
             task.phase = TASK_TIMEOUT
             mem.active_task = None
             return None  # 让 brain 走 _pioneer_to_tower 回武器防御
-        # 已提交过答案 → 不重复提交(等任务结束/超时)，避免卡死循环
-        if task.last_answer:
-            return None
         # B2: 任务期不移动，只提交答案
+        # 超时按最高通过率结算 → 有新答案就重提（提升通过率）
         answer = _derive_answer(turn, mem, task)
-        if answer:
+        if answer and answer != task.last_answer:
             task.last_answer = answer
             task.phase = TASK_ANSWERED
             return submit_answer_command(answer)
-        return None  # 等待工具结果，保持不动
+        return None  # 无新答案，等待工具结果，保持不动
     # 非任务期：走向最近可接任务点
     tp = _best_task_point(turn, pioneer)
     if tp is None:

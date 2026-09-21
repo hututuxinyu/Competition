@@ -29,9 +29,13 @@ Competition/
 │       └── grid.py        A*寻路 + next_step_to_adjacent
 ├── scripts/               ← 测试脚本(sys.path 指向 CoreGeek/src)
 │   ├── replay.py          全 fixture 回放验证
-│   ├── gen_fixtures.py    生成 18 个测试场景
+│   ├── benchmark.py       多回合KPI基准测试(止血闸门，score评估)
+│   ├── _bench_worker.py   基准测试子进程(模拟260回合)
+│   ├── snapshot.py        行为快照回归(止血)
+│   ├── gen_fixtures.py    生成 22 个测试场景
 │   └── validate_m2~m8.py  各里程碑专项验收
-├── tests/fixtures/        18 个 request 场景 JSON
+├── tests/fixtures/        22 个 request 场景 JSON
+├── tests/bench_baseline/  KPI基线(对比防退化)
 ├── docs/                  任务书/接口文档/方案设计
 └── Demo/                  原始 demo 参考
 ```
@@ -46,6 +50,14 @@ py -3.11 CoreGeek/main3.py 6666
 
 # 全量回放验证（必须全 [ALL PASS]）
 py -3.11 scripts/replay.py
+
+# 多回合KPI基准测试（止血闸门，score评估）
+py -3.11 scripts/benchmark.py            # check：对比基线，有退化 → 退出码 1
+py -3.11 scripts/benchmark.py --update   # 重建基线（预期变化时手动跑）
+
+# 行为快照回归（止血，replay 之前先跑）
+py -3.11 scripts/snapshot.py            # check：对比基线，有变化 → 退出码 1
+py -3.11 scripts/snapshot.py --update   # 仅当变化是预期时，重建基线并提交
 
 # 各里程碑专项验收
 py -3.11 scripts/validate_m3.py   # M3 夜间战斗
@@ -65,7 +77,7 @@ tar -czf CoreGeek.tar.gz CoreGeek
 ## 开发约定（必须遵守）
 
 1. **每次完成优化后必须重新打包 `CoreGeek.tar.gz`**（`tar -czf CoreGeek.tar.gz CoreGeek`），并验证包能解压启动。
-2. **代码改动后先跑 `replay.py` + 相关 `validate_mX.py`**，确认不破坏既有里程碑，再打包。
+2. **代码改动后先跑 `snapshot.py`（止血）→ 再跑 `replay.py` + 相关 `validate_mX.py`**，确认不破坏既有里程碑，再打包。`snapshot.py` 报 CHANGED 时，预期变化则 `--update` 基线并随代码提交；非预期（牵连了无关 fixture）则必须复盘，这是终结“越优化越差”的关键闸门。
 3. `CoreGeek/` 是唯一提交目录；根目录无 src/（已删），测试脚本 `sys.path` 指向 `CoreGeek/src`，即测试的就是提交代码。
 4. 提交包零依赖纯标准库，判题器环境无需 pip install。
 

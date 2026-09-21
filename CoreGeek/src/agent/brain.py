@@ -9,6 +9,7 @@ from .grid import next_step
 from .memory import Memory
 from .protocol import (
     DAY_ROUNDS,
+    ORE_TYPES,
     PIONEER,
     Pos,
     Response,
@@ -100,8 +101,10 @@ def _day_worker_action(
     walls_missing: list[Pos],
     claimed: set[Pos],
 ) -> dict[str, Any] | None:
-    """单工人白天动作优先级：升级 > 卖矿 > 买券 > 建塔 > 移动到经济(卖矿换金币) > 建墙 > 采矿。
-    夜晚前5回合强制回武器旁(夜间操控准备)。有矿先去卖换金币升级(比建墙更重要)。"""
+    """白天工人优先级（按 score 贡献排序）：
+    升级(免费) > 卖矿(获金) > 建塔(25金,生存核心) > 买券(100金,升级)
+    > 召唤令(骚扰) > 移动到经济 > 建墙 > 采集 > 兜底移动(防0-cmd)。
+    夜晚前5回合强制回武器旁。建塔优先于买券/召唤，避免金币被挪用。"""
     round_in_day = (turn.round_no - 1) % ROUNDS_PER_DAY
     # 夜晚前5回合：worker 停止采集/建墙，回最近武器旁(夜间操控)
     if round_in_day >= DAY_ROUNDS - 5:
@@ -112,23 +115,40 @@ def _day_worker_action(
                 step = _step_toward(turn, worker, nearest.pos, claimed)
                 if step is not None:
                     return move_command(step)
-    for plan in (economy.plan_upgrade, economy.plan_sell, economy.plan_buy):
-        cmd = plan(turn, worker)
-        if cmd is not None:
-            return cmd
-    cmd = adversary.plan_summon(turn, _MEM, worker)
+    # 1. 有券先升级（不花金币，零竞争）
+    cmd = economy.plan_upgrade(turn, worker)
     if cmd is not None:
         return cmd
+    # 2. 有矿先卖（获得金币，经济引擎）
+    cmd = economy.plan_sell(turn, worker)
+    if cmd is not None:
+        return cmd
+    # 3. 建塔（花25金/座，R10前建满3座rocket是生存底线）
     cmd = builder.plan_build_tower(turn, worker, sites, towers_missing, claimed)
     if cmd is not None:
         return cmd
+    # 4. 买券（金币≥100，优先基地升级券→塔升级券）
+    cmd = economy.plan_buy(turn, worker)
+    if cmd is not None:
+        return cmd
+    # 5. 召唤令骚扰（不竞争升级预算）
+    cmd = adversary.plan_summon(turn, _MEM, worker)
+    if cmd is not None:
+        return cmd
+    # 6. 移动到经济目标（有矿走向小贩，有券走向升级目标）
     cmd = economy.plan_move_to_economy(turn, worker, claimed)
     if cmd is not None:
         return cmd
+    # 7. 建墙（有石头且近墙位时建，不远行）
     cmd = builder.plan_build_wall(turn, worker, walls_missing, claimed)
     if cmd is not None:
         return cmd
-    return economy.plan_collect(turn, worker, _MEM, claimed)
+    # 8. 采集（走向矿区）
+    cmd = economy.plan_collect(turn, worker, _MEM, claimed)
+    if cmd is not None:
+        return cmd
+    # 9. 兜底：A*失败时贪心移动到最近矿/小贩（防0-cmd停摆）
+    return _fallback_move(turn, worker, claimed)
 
 
 def _pioneer_to_tower(
@@ -252,3 +272,55 @@ def _neighbours(pos: Pos) -> tuple[Pos, ...]:
     return tuple(
         Pos(pos.x + dx, pos.y + dy) for dx, dy in _NEIGHBOUR_STEPS
     )
+
+
+def _fallback_move(
+    turn: Turn, worker: Unit, claimed: set[Pos]
+) -> dict[str, Any] | None:
+    """A* 全部失败时的贪心移动：朝最近矿区或小贩走一步，防0-cmd停摆。
+    不做完整寻路，只选朝目标方向的可落地格。"""
+    # 选目标：有矿→小贩，无矿→最近矿
+    target: Pos | None = None
+    if any(worker.item_count(o) > 0 for o in ORE_TYPES):
+        target = turn.vendor_pos()
+    if target is None:
+        best_dist = 10 ** 9
+        for ore in ORE_TYPES:
+            for pos in turn.mines(ore):
+                d = distance(worker.pos, pos)
+                if d < best_dist:
+                    best_dist = d
+                    target = pos
+    if target is None:
+        return None
+    blocked = turn.blocked(worker)
+    # 贪心方向：朝目标移动
+    dx = _sign(target.x - worker.pos.x)
+    dy = _sign(target.y - worker.pos.y)
+    # 优先尝试对角方向
+    candidates = []
+    if dx != 0 and dy != 0:
+        candidates.append(Pos(worker.pos.x + dx, worker.pos.y + dy))
+    if dx != 0:
+        candidates.append(Pos(worker.pos.x + dx, worker.pos.y))
+    if dy != 0:
+        candidates.append(Pos(worker.pos.x, worker.pos.y + dy))
+    # 补全其他方向
+    for sdx, sdy in _NEIGHBOUR_STEPS:
+        p = Pos(worker.pos.x + sdx, worker.pos.y + sdy)
+        if p not in candidates:
+            candidates.append(p)
+    for step in candidates:
+        if (step != worker.pos and turn.land(step)
+                and step not in blocked and step not in claimed):
+            claimed.add(step)
+            return move_command(step)
+    return None
+
+
+def _sign(value: int) -> int:
+    if value > 0:
+        return 1
+    if value < 0:
+        return -1
+    return 0

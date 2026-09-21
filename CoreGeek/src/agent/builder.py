@@ -17,7 +17,7 @@ from .protocol import (
     station_footprint,
 )
 
-TOWER_LOADOUT = ("rocket", "railgun", "rocket")  # 2火箭(全图溅射)+1电磁(穿透)，去加特林(射程3太短)
+TOWER_LOADOUT = ("rocket", "rocket", "rocket")  # 全火箭(全图溅射+多目标)，对手共性最优选型
 STONE_BATCH = 6
 WALL_LAYERS = (2, 3)  # 双层围墙：distance2 主环 + distance3 外环
 
@@ -88,16 +88,32 @@ def plan_build_wall(
     walls_missing: list[Pos],
     claimed: set[Pos],
 ) -> dict[str, Any] | None:
+    """有石头时：紧邻墙位→建墙；墙位≤3格→走过去；否则不主动走远路。"""
     if not walls_missing:
         return None
     stones = worker.item_count(WALL_MATERIAL)
     if stones <= 0:
         return None
+    # 找最近墙位
+    nearest: Pos | None = None
+    nearest_dist = 10 ** 9
     for site in walls_missing:
         if site in claimed:
             continue
-        return _build_or_walk(turn, worker, site, WALL, claimed)
-    return None
+        d = distance(worker.pos, site)
+        if d < nearest_dist:
+            nearest_dist = d
+            nearest = site
+    if nearest is None:
+        return None
+    # 紧邻→建墙
+    if nearest_dist <= 1:
+        claimed.add(nearest)
+        return build_command(nearest, WALL)
+    # ≤5格→走过去（U型墙北面在y=19，距基地4-5格）
+    if nearest_dist <= 5:
+        return _build_or_walk(turn, worker, nearest, WALL, claimed)
+    return None  # 太远，让采集逻辑处理移动
 
 
 def tower_sites(turn: Turn) -> tuple[Pos, ...]:
@@ -115,14 +131,49 @@ def tower_sites(turn: Turn) -> tuple[Pos, ...]:
 
 
 def wall_order(turn: Turn) -> tuple[Pos, ...]:
-    """双层围墙布局：distance2 主环 + distance3 外环，各带入口。"""
+    """U型围墙：北+东+南三面，西侧开放（靠塔覆盖）。
+    对手共性布局：14-17墙 vs 同心圆32-40墙，建墙效率翻倍。"""
     station = turn.station()
     if station is None:
         return ()
+    footprint = station_footprint(station.pos)
+    xs = [p.x for p in footprint]
+    ys = [p.y for p in footprint]
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
+
+    fp_set = set(footprint)
+    order: list[Pos] = []
+
+    # 1. 北面横墙：y = ymin - 4，x 从 xmin-2 到 xmax+1
+    north_y = ymin - 4
+    for x in range(xmin - 2, xmax + 2):
+        order.append(Pos(x, north_y))
+
+    # 2. 东面纵墙：x = xmax + 1，y 从 north_y+1 到 ymax+1
+    east_x = xmax + 1
+    for y in range(north_y + 1, ymax + 2):
+        order.append(Pos(east_x, y))
+
+    # 3. 南面横墙：y = ymax + 1，x 从 xmin-2 到 east_x-1
+    south_y = ymax + 1
+    for x in range(xmin - 2, east_x):
+        order.append(Pos(x, south_y))
+
+    # 4. 西侧延伸角（2墙，阻挡绕行）
+    order.append(Pos(xmin - 2, north_y))
+    order.append(Pos(xmin - 2, south_y))
+
+    # 去重 + 过滤障碍/非land，排除基地footprint
+    seen: set[Pos] = set()
     result: list[Pos] = []
-    for layer in WALL_LAYERS:
-        result.extend(_ring_layer(station.pos, layer))
-    return tuple(p for p in result if turn.land(p))
+    for p in order:
+        if p in seen or p in fp_set:
+            continue
+        if turn.land(p):
+            seen.add(p)
+            result.append(p)
+    return tuple(result)
 
 
 def _ring_layer(station_pos: Pos, layer: int) -> list[Pos]:

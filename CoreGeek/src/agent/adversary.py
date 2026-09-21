@@ -13,7 +13,9 @@ SUMMON_ORDERS = (
     ("SmallRobotSummonOrder", 20),
 )
 DAILY_SUMMON_LIMIT = 10
-GOLD_RESERVE = 50  # 保升级预算下限
+# 保升级预算下限：基地升级(100金)+塔升级(100金)=200金底线
+# 对手分析：早期买召唤令=挪用建塔/升级预算，P3/P4优先级更高
+GOLD_RESERVE = 200
 
 
 def plan_summon(

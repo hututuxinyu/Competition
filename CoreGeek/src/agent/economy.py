@@ -21,15 +21,18 @@ from .protocol import (
 )
 
 # 升级优先级表：(目标类型集合, 起始level, 券名, 价格)
-# 顺序即金币消费优先级：基地>武器>围墙
+# 对手分析：塔升级先于基地升级（R34-R45升塔 → R169+升基地）
+# 塔升级=回满血+DPS翻倍（score2击杀+防御双赢），基地升级=HP翻倍（score3生存）
 UPGRADE_PLAN = [
-    ((STATION,), 1, "StationUpgradeVoucher1", 100),
     (TOWER_TYPES, 1, "WeaponUpgradeVoucher1", 100),
-    ((STATION,), 2, "StationUpgradeVoucher2", 150),
+    ((STATION,), 1, "StationUpgradeVoucher1", 100),
     (TOWER_TYPES, 2, "WeaponUpgradeVoucher2", 150),
+    ((STATION,), 2, "StationUpgradeVoucher2", 150),
     ((WALL,), 1, "WallUpgradeVoucher1", 20),
     ((WALL,), 2, "WallUpgradeVoucher2", 30),
 ]
+# 卖矿最低批量：积攒足够矿石再去卖，减少往返开销
+MIN_SELL_BATCH = 5
 
 # 券名 → (目标类型集合, 起始level)
 _VOUCHER_MAP = {
@@ -80,8 +83,8 @@ def update_forecast(turn: Turn, mem: Memory) -> None:
 def plan_collect(
     turn: Turn, worker: Unit, mem: Memory, claimed: set[Pos]
 ) -> dict[str, Any] | None:
-    """采集倾斜：优先采身边的矿(distance<=1)；否则明天不可采的矿优先囤货，
-    否则按当前价高优先，选最近矿移动过去。"""
+    """采集倾斜：优先采身边的矿(distance<=1)；缺石头建墙时优先采石矿；
+    否则明天不可采的矿优先囤货，否则按当前价高优先，选最近矿移动过去。"""
     if worker.backpack_full:
         return None
     from .protocol import collect_command
@@ -94,6 +97,9 @@ def plan_collect(
                 claimed.add(pos)
                 return collect_command(pos)
     # 2. 否则按 priority（不可采囤货1000 > 矿石单价）+ 距离选远矿移动
+    # 缺石头时提升石矿优先级（建墙需要石头），夜间墙被毁后白天优先采石重建
+    # 墙少于墙位规划的一半时 → 急需石矿
+    need_stone = len(turn.walls()) < 5
     candidates: list[tuple[int, str, Pos]] = []
     for ore in ORE_TYPES:
         for pos in turn.mines(ore):
@@ -104,15 +110,18 @@ def plan_collect(
                 and (mem.day + 1) in mem.ore_unavailable_days[ore]
             )
             priority = 1000 if unavail_tomorrow else turn.vendor_price(ore)
+            if need_stone and ore == "stone":
+                priority += 20  # 建墙期石矿优先，但不完全压制铁/铜
             candidates.append((priority, ore, pos))
     candidates.sort(
-        key=lambda x: (distance(worker.pos, x[2]), -x[0], x[2].x, x[2].y)
+        key=lambda x: (distance(worker.pos, x[2]) - x[0] * 0.5, x[2].x, x[2].y)
     )
     for _, ore, pos in candidates:
         step = _move_toward(turn, worker, pos, claimed)
         if step is not None:
             return step
-    return None
+    # 3. A*失败→贪心移动到最近矿
+    return _greedy_move_to_nearest_mine(turn, worker, claimed)
 
 
 def plan_action(turn: Turn, worker: Unit, claimed: set[Pos]) -> dict[str, Any] | None:
@@ -130,7 +139,7 @@ def plan_action(turn: Turn, worker: Unit, claimed: set[Pos]) -> dict[str, Any] |
 
 
 def plan_sell(turn: Turn, worker: Unit) -> dict[str, Any] | None:
-    """工人在小贩旁且有矿 → sell 当前总价值最高的矿石。"""
+    """工人在小贩旁且有矿 → sell 价值最高的矿石（到了就全卖）。"""
     vendor = turn.vendor_pos()
     if vendor is None or distance(worker.pos, vendor) > 1:
         return None
@@ -186,17 +195,34 @@ def plan_move_to_economy(
         if item in _VOUCHER_MAP:
             target = _nearest_upgrade_target(turn, worker, item)
             if target is not None:
-                return _move_toward(turn, worker, target, claimed)
-    # 有矿 → 走向小贩
-    if any(worker.item_count(o) > 0 for o in ORE_TYPES):
+                step = _move_toward(turn, worker, target, claimed)
+                if step is not None:
+                    return step
+                # A*失败→贪心兜底
+                greedy = _greedy_move_to(turn, worker, target, claimed)
+                if greedy is not None:
+                    return greedy
+    # 有矿 → 走向小贩（攒够批量才去）
+    total_ore = sum(worker.item_count(o) for o in ORE_TYPES)
+    if total_ore >= MIN_SELL_BATCH or worker.backpack_full:
         vendor = turn.vendor_pos()
         if vendor is not None:
-            return _move_toward(turn, worker, vendor, claimed)
+            step = _move_toward(turn, worker, vendor, claimed)
+            if step is not None:
+                return step
+            greedy = _greedy_move_to(turn, worker, vendor, claimed)
+            if greedy is not None:
+                return greedy
     # 金币够买券 → 走向商店
     if turn.gold >= 100:
         shop = turn.weapon_shop_pos()
         if shop is not None:
-            return _move_toward(turn, worker, shop, claimed)
+            step = _move_toward(turn, worker, shop, claimed)
+            if step is not None:
+                return step
+            greedy = _greedy_move_to(turn, worker, shop, claimed)
+            if greedy is not None:
+                return greedy
     return None
 
 
@@ -256,3 +282,61 @@ def _move_toward(
         return None
     claimed.add(step)
     return move_command(step)
+
+
+_NEIGHBOUR_STEPS = (
+    (-1, -1), (-1, 0), (-1, 1),
+    (0, -1), (0, 1),
+    (1, -1), (1, 0), (1, 1),
+)
+
+
+def _greedy_move_to_nearest_mine(
+    turn: Turn, worker: Unit, claimed: set[Pos]
+) -> dict[str, Any] | None:
+    """A* 寻路失败时的贪心兜底：朝最近矿区方向走一步，防0-cmd停摆。"""
+    best_dist = 10 ** 9
+    target: Pos | None = None
+    for ore in ORE_TYPES:
+        for pos in turn.mines(ore):
+            d = distance(worker.pos, pos)
+            if d < best_dist:
+                best_dist = d
+                target = pos
+    if target is None:
+        return None
+    return _greedy_move_to(turn, worker, target, claimed)
+
+
+def _greedy_move_to(
+    turn: Turn, worker: Unit, target: Pos, claimed: set[Pos]
+) -> dict[str, Any] | None:
+    """贪心移动：朝 target 方向走一步（不做完整A*）。"""
+    blocked = turn.blocked(worker)
+    dx = _sign(target.x - worker.pos.x)
+    dy = _sign(target.y - worker.pos.y)
+    candidates: list[Pos] = []
+    if dx != 0 and dy != 0:
+        candidates.append(Pos(worker.pos.x + dx, worker.pos.y + dy))
+    if dx != 0:
+        candidates.append(Pos(worker.pos.x + dx, worker.pos.y))
+    if dy != 0:
+        candidates.append(Pos(worker.pos.x, worker.pos.y + dy))
+    for sdx, sdy in _NEIGHBOUR_STEPS:
+        p = Pos(worker.pos.x + sdx, worker.pos.y + sdy)
+        if p not in candidates:
+            candidates.append(p)
+    for step in candidates:
+        if (step != worker.pos and turn.land(step)
+                and step not in blocked and step not in claimed):
+            claimed.add(step)
+            return move_command(step)
+    return None
+
+
+def _sign(value: int) -> int:
+    if value > 0:
+        return 1
+    if value < 0:
+        return -1
+    return 0

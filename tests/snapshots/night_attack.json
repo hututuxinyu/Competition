@@ -1,0 +1,36 @@
+{
+  "executeCmd": "",
+  "prompt": "民间传闻累积:\nDAY1: 村里最年长的采药人昨天过世了，活了九十三岁。他孙子在整理遗物时发现了一本发霉的笔记，最后一页潦草地写着：\"西部有一石门，门需三钥\"下面还画了一个圆圈，圆圈里画了三道杠。家里人看不懂，打算当废纸烧了。南边渡口的船夫抱怨最近水位下降得厉害，船底已经刮了三次礁石了。\n\n已知祭坛机制：献祭特定任务用品组合可在特定地点特定时间开启宝藏。\n可选任务用品: [AcientTablet, StarSand, FlameBreath, FrostPotion, ThornAmulet, IronWhistle]\n请推断宝藏的 地点(坐标pos)、献祭物品组合(items)、开启时间(time)。\n只返回JSON: {\"pos\":{\"x\":N,\"y\":N},\"items\":[\"...\"],\"time\":\"DAY N\"}",
+  "roleCommandMap": {
+    "10020": {
+      "action": "attack",
+      "controllerId": "10010",
+      "targetPos": [
+        {
+          "x": 11,
+          "y": 21
+        }
+      ]
+    },
+    "10030": {
+      "action": "attack",
+      "controllerId": "10012",
+      "targetPos": [
+        {
+          "x": 11,
+          "y": 21
+        }
+      ]
+    },
+    "10040": {
+      "action": "attack",
+      "controllerId": "10011",
+      "targetPos": [
+        {
+          "x": 11,
+          "y": 22
+        }
+      ]
+    }
+  }
+}
