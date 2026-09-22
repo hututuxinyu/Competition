@@ -6,7 +6,7 @@
       "action": "move",
       "targetPos": [
         {
-          "x": 7,
+          "x": 9,
           "y": 21
         }
       ]
@@ -18,8 +18,8 @@
       "action": "move",
       "targetPos": [
         {
-          "x": 7,
-          "y": 22
+          "x": 8,
+          "y": 24
         }
       ]
     }

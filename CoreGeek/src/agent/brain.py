@@ -135,12 +135,12 @@ def _day_worker_action(
     cmd = adversary.plan_summon(turn, _MEM, worker)
     if cmd is not None:
         return cmd
-    # 6. 移动到经济目标（有矿走向小贩，有券走向升级目标）
-    cmd = economy.plan_move_to_economy(turn, worker, claimed)
+    # 6. 建墙（有石头且近墙位时建，优先于卖矿——墙是生存底线）
+    cmd = builder.plan_build_wall(turn, worker, walls_missing, claimed)
     if cmd is not None:
         return cmd
-    # 7. 建墙（有石头且近墙位时建，不远行）
-    cmd = builder.plan_build_wall(turn, worker, walls_missing, claimed)
+    # 7. 移动到经济目标（有矿走向小贩，有券走向升级目标）
+    cmd = economy.plan_move_to_economy(turn, worker, claimed)
     if cmd is not None:
         return cmd
     # 8. 采集（走向矿区）
@@ -175,9 +175,38 @@ def _night(turn: Turn, commands: dict[int, dict[str, Any]], deadline: float) -> 
         if distance(role.pos, tower.pos) <= 1:
             # 已在武器旁：combat 决策道具/攻击
             combat.act_at_tower(turn, role, tower, commands)
+            # act_at_tower 未生成命令（塔冷却/无目标）→ fallback 移动向最近机器人
+            if role.unit_id not in commands and role.unit_id not in {
+                c.get("controllerId", -1) for c in commands.values()
+            }:
+                _night_fallback(turn, role, tower, commands, claimed)
             continue
         # 碰撞规避：走向武器，claimed 防止多角色争同一步
         step = _step_toward(turn, role, tower.pos, claimed)
+        if step is not None:
+            commands[role.unit_id] = move_command(step)
+        else:
+            # A*失败→贪心走向塔
+            _night_fallback(turn, role, tower, commands, claimed)
+
+
+def _night_fallback(
+    turn: Turn, role: Unit, tower: Unit,
+    commands: dict[int, dict[str, Any]], claimed: set[Pos],
+) -> None:
+    """夜间兜底：塔冷却/无目标时，走向最近机器人（保持机动，不瘫坐）。"""
+    if not turn.robots:
+        return
+    nearest_robot = min(
+        (r for r in turn.robots if r.health > 0),
+        key=lambda r: distance(role.pos, r.pos),
+        default=None,
+    )
+    if nearest_robot is None:
+        return
+    # 在塔旁不动（保持操控位），只在塔冷却且机器人近时才移动
+    if tower.cooldown > 0 and distance(role.pos, nearest_robot.pos) > 2:
+        step = _step_toward(turn, role, nearest_robot.pos, claimed)
         if step is not None:
             commands[role.unit_id] = move_command(step)
 

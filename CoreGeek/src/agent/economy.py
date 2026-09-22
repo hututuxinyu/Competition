@@ -111,7 +111,7 @@ def plan_collect(
             )
             priority = 1000 if unavail_tomorrow else turn.vendor_price(ore)
             if need_stone and ore == "stone":
-                priority += 20  # 建墙期石矿优先，但不完全压制铁/铜
+                priority += 50  # 建墙期石矿最高优先（0墙=基地被速灭）
             candidates.append((priority, ore, pos))
     candidates.sort(
         key=lambda x: (distance(worker.pos, x[2]) - x[0] * 0.5, x[2].x, x[2].y)
@@ -213,8 +213,8 @@ def plan_move_to_economy(
             greedy = _greedy_move_to(turn, worker, vendor, claimed)
             if greedy is not None:
                 return greedy
-    # 金币够买券 → 走向商店
-    if turn.gold >= 100:
+    # 金币够买最便宜券(20金) → 走向商店
+    if turn.gold >= 20:
         shop = turn.weapon_shop_pos()
         if shop is not None:
             step = _move_toward(turn, worker, shop, claimed)
