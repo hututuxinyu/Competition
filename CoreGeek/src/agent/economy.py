@@ -111,7 +111,7 @@ def plan_collect(
             )
             priority = 1000 if unavail_tomorrow else turn.vendor_price(ore)
             if need_stone and ore == "stone":
-                priority += 50  # 建墙期石矿最高优先（0墙=基地被速灭）
+                priority += 20  # 建墙期石矿优先，但5墙后转经济(铁铜)
             candidates.append((priority, ore, pos))
     candidates.sort(
         key=lambda x: (distance(worker.pos, x[2]) - x[0] * 0.5, x[2].x, x[2].y)
